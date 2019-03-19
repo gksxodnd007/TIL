@@ -3,9 +3,6 @@
 - Docker
 - Domain Driven Develop(DDD)
 - Spring
-  - Cloud
-  - JPA
-  - Batch..
 - Kotlin
 - Network
 - OS
