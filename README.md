@@ -4,3 +4,6 @@
 - Domain Driven Develop(DDD)
 - Spring
 - Kotlin
+- Network
+- OS
+...and so on
