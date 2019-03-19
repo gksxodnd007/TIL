@@ -99,4 +99,5 @@ void test() {
     userRepository.findAll().forEach(e -> Assertions.assertEquals(26L, (long) e.getAge()));
 }
 ```
-- entity 수정을 루프 밖에서 하였더니 테스트를 통과하였다. 많이 생각을 해보았지만 아직 이유를 잘 모르겠다. 아시는 분이 계시다 댓글로 알려주시면 감사하겠습니다. ㅎ
+- entity 수정을 루프 밖에서 하였더니 테스트를 통과하였다. 많이 생각을 해보았지만 아직 이유를 잘 모르겠다. 아시는 분이 계시다 댓글로 알려주시면 감사하겠습니다.
+> paging시 read한 데이터를 수정하면 당연히 발생하는 이슈...내가 너무 무지했다
