@@ -88,15 +88,15 @@ Datasource를 DefaultBatchConfigurer생성자에 주입함으로써 DB를 분리
 ```
 위의 클래스를 따라가보자.
 ![](assets/batchSchema-875184a1.png)
-위의 코드를 보면 @ConditionalOnMissingBean(BatchConfigurer.class)애너테이션ㅇ이 붙어있다. 즉, BatchConfigurer타입의 Bean이 없으면 위의 설정들을 적용하는 것이다. 코드를 보면 알수있듯이 entityManagerFactory bean이 없으면 BasicBatchConfigurer를 entityManagerFactory bean이 있으면 JpaBatchConfiguration 만들어서 사용한다. 여기서 의문점이 생긴다. 그럼 DefaultBatchConfigurer는 무엇인가. @EnableBatchProcessing에 답이있다.
+위의 코드를 보면 @ConditionalOnMissingBean(BatchConfigurer.class)애너테이션이 붙어있다. 즉, BatchConfigurer타입의 Bean이 없으면 위의 설정들을 적용하는 것이다. 코드를 보면 알수있듯이 entityManagerFactory Bean이 없으면 BasicBatchConfigurer를 entityManagerFactory Bean이 있으면 JpaBatchConfiguration 만들어서 사용한다. 여기서 의문점이 생긴다. 그럼 DefaultBatchConfigurer는 무엇인가. @EnableBatchProcessing에 답이있다.
 ![](assets/batchSchema-0d21e44b.png)
 ```java
 @Import(BatchConfigurationSelector.class)
 ```
 이 클래스를 따라가보자.
 ![](assets/batchSchema-69821422.png)
-@EnableBatchProcessing 별다른 옵션을 주지않으면 SimpleBatchCongifuration.class를 빈으로 띄운다. SimpleBatchCongifuration 클래스안의 다음 메서드를 주목하자.
+@EnableBatchProcessing 별다른 옵션을 주지않으면 SimpleBatchCongifuration.class를 Bean으로 띄운다. SimpleBatchCongifuration 클래스안의 다음 메서드를 주목하자.
 ![](assets/batchSchema-86a9845a.png)
 initialize라는 메서드가있고 이안에서 BatchConfigurer를 생성한다. getConfigurer는 SimpleBatchCongifuration의 부모클래스인 AbstractBatchConfiguration의 메서드이다. 이 클래스의 getConfigurer메서드를 살펴보자.
 ![](assets/batchSchema-10b2e4bd.png)
-이 메서드를 보면 DefaultBatchConfigurer를 생성하여 BatchConfigurer빈을 띄우는 것을 확인할 수 있다. 기존의 DataSource Bean이 있다면 그 빈을 사용하게 될것이고 생성자에 별도의 DataSource를 주 입하면 그 DataSource를 이용하게된다. 즉, @EnableBatchProcessing은 BatchConfigurer빈이 없다면 이를 생성해서 빈으로 등록해주는데 이때 DefaultBatchConfigurer를 생성해서 주입해주는 것이다. 따라서 DefaultBatchConfigurer빈을 생성해놓으면 이것을 사용하게된다. Batch 스키마를 분리하고 싶은 DB의 DataSource를 세팅하고 그것을 주입해주기만하면 된다.
+이 메서드를 보면 DefaultBatchConfigurer를 생성하여 BatchConfigurer Bean을 띄우는 것을 확인할 수 있다. 기존의 DataSource Bean이 있다면 그 Bean을 사용하게 될것이고 생성자에 별도의 DataSource를 주입하면 그 DataSource를 이용하게된다. 즉, @EnableBatchProcessing은 BatchConfigurer Bean이 없다면 이를 생성해서 Bean으로 등록해주는데 이때 DefaultBatchConfigurer를 생성해서 주입해주는 것이다. 따라서 DefaultBatchConfigurer Bean을 생성해놓으면 이것을 사용하게된다. Batch 스키마를 분리하고 싶은 DB의 DataSource를 세팅하고 그것을 주입해주기만하면 된다.
