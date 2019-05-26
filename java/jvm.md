@@ -11,3 +11,7 @@
 ### 주의
 - .jar파일명 앞에 jvm 옵션을 주어야함.
 - application parameter는 그 뒤에 주어야함.
+
+
+### JVM Internal 참조 링크
+- https://d2.naver.com/helloworld/1230
