@@ -8,25 +8,25 @@
 
 ```scala
 final val defaultDecider: Decider = {
-    case _: ActorInitializationException => Stop
-    case _: ActorKilledException         => Stop
-    case _: DeathPactException           => Stop
-    case _: Exception                    => Restart
-  }
+  case _: ActorInitializationException => Stop
+  case _: ActorKilledException         => Stop
+  case _: DeathPactException           => Stop
+  case _: Exception                    => Restart
+}
 
-  /**
-   * When supervisorStrategy is not specified for an actor this
-   * is used by default. OneForOneStrategy with decider defined in
-   * [[#defaultDecider]].
-   */
-  final val defaultStrategy: SupervisorStrategy = {
-    OneForOneStrategy()(defaultDecider)
-  }
+/**
+ * When supervisorStrategy is not specified for an actor this
+ * is used by default. OneForOneStrategy with decider defined in
+ * [[#defaultDecider]].
+ */
+final val defaultStrategy: SupervisorStrategy = {
+  OneForOneStrategy()(defaultDecider)
+}
 ```
 
 - `OneForOneStrategy`: 오직 중단된 액터에게만 적용
 - `AllForOneStrategy`: 모든 자식이 같은 운명을 공유해서 같은 복구 방식을 한꺼번에 적용
-- Application마다 내공장성에 필요한 조건을 만족하고자 SupervisorStrategy를 직접 만들어야 할 때가 있다. Supervisor의 액터 중단 오류에 대해 취할 수 있는 동작으로는 네 가지가 있다.
+- Application마다 내고장성에 필요한 조건을 만족하고자 SupervisorStrategy를 직접 만들어야 할 때가 있다. Supervisor의 액터 중단 오류에 대해 취할 수 있는 동작으로는 네 가지가 있다.
   - Resume: 오류를 무시하고 같은 액터 인스턴스로 처리를 진행한다.
   - Restart: 중단된 액터 인스턴스를 제거하고 새로 만든 액터 인스턴스로 교체한다.
   - Stop: 자식 액터를 영원히 종료시킨다.
@@ -88,14 +88,17 @@ val deserialize: Flow[Array[Byte], GenericRecord, NotUsed] = {
 ```scala
 val decider: Supervision.Decider = {
   case _: InvalidSchemaException => Supervision.Resume
-  caes _ => Supervision.Stop
+  case _ => Supervision.Stop
 }
 ```
 
 - Stream은 SupervisionStrategy로 Resume, Stop, Restart를 지원한다.
 
 ```
-1. 예외를 잡아서 오류를 표현하는 타입의 값으로 만들어서 다른 원소들과 함께 스트림을 통해 전달하는 방식이 있다. UnDeserializeRequest 케이스 클래스를 도입하여 Request와 UnDeserializeRequest가 공통의 sealed된 RequestFrame 트레이트를 확장하게 한다. 이 방식을 사용하면 패턴 매칭으로 오류 여부를 검사할 수 있어 결과적으로 전체 흐름은 Flow[ByteString, RequestFrame, NotUsed]가 될 것이다.
+1. 예외를 잡아서 오류를 표현하는 타입의 값으로 만들어서 다른 원소들과 함께 스트림을 통해 전달하는 방식이 있다.
+UnDeserializeRequest 케이스 클래스를 도입하여 Request와 UnDeserializeRequest가 공통의 sealed된 RequestFrame 트레이트를 확장하게 한다.
+이 방식을 사용하면 패턴 매칭으로 오류 여부를 검사할 수 있어 결과적으로 전체 흐름은 Flow[ByteString, RequestFrame, NotUsed]가 될 것이다.
 
-2. Either 타입을 사용해서 오류를 left 타입으로, 이벤트를 right 타입으로 표현할 수도 있다. 이때 전체 흐름은 Flow[ByteString, Either[Error, Request], NotUsed]가 되며, 캣츠(cats)의 Xor타입을 적용할 수 도 있다.
+2. Either 타입을 사용해서 오류를 left 타입으로, 이벤트를 right 타입으로 표현할 수도 있다.
+이때 전체 흐름은 Flow[ByteString, Either[Error, Request], NotUsed]가 되며, 캣츠(cats)의 Xor타입을 적용할 수 도 있다.
 ```
