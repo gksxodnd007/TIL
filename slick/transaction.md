@@ -136,7 +136,7 @@ class UserTxService(
       user <- userRepository.saveQuery(entity) // DBIO.from(userRepository.save(entity))로도 가능
       _ <- DBIO.from(externalClient.send(user).map {
           case Success(_) => ():Unit
-          case Failure(_) => throw new RuntimeException("외부 시스템 통신 실패")
+          case Failure(_) => throw new RuntimeException("외부 시스템 통신 실패") // Future.failed(...)는 트랜잭션 롤백 사유로 해당되지 않음.
         })
     } yield user).transactionally
 
@@ -146,4 +146,4 @@ class UserTxService(
 ```
 이제 UserService 에서 UserTxService를 통해 유저를 등록하면 된다. 비즈니스 로직은 UserService에 트랜잭션 관련 처리 로직은 UserTxService로 책임을 나누면 layer도 깔끔하게 분리되면서 어떤 layer에 종속적인 부분이 관련 없는 layer로 전파되는 것을 막을 수 있다. Spring기반 어플리케이션은 트랜잭션으로 묶는 과정이 너무 쉬워 자칫하면 트랜잭션을 남용하게 될 수도 있다. 트랜잭션은 비용이 비싼 기능이므로 신중하게 이용하는 것이 개인적으로 좋다고 생각한다.
 
-> 추가로 DBIOAction들을 트랜잭션으로 묶을 때 DBIO.failed로 실패 처리를 할 수 없는 경우 exception을 throw 해주면된다. 다만 db.run(tx).recover { ... }를 통해 에러로그를 남기는 등 핸들링을 해주어야한다.
+> 추가로 DBIOAction들을 트랜잭션으로 묶을 때 DBIO.failed로 실패 처리를 할 수 없는 경우 exception을 throw 해주면된다(DBIO.from(...) 안에 있는 Future에서 Exception throw되면 따로 throw 해줄 필요없음). 다만 db.run(tx).recover { ... }를 통해 에러로그를 남기는 등 핸들링을 해주어야한다.
