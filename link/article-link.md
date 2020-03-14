@@ -8,4 +8,5 @@
 - [Google Kubernetes Engine과 함께하는 인프라 현대화](https://www.youtube.com/watch?v=RTgvFpC4RXs&linkId=74610233&fbclid=IwAR3sLVTfOPsUZbn7Eafj00ZMNTxFqrbg7QPrOMSOgAU9ophIknYIual1C2c)
 - [Process-scheduling-CPU-scheduling](https://www.slideshare.net/MukeshChinta/process-scheduling-cpu-scheduling)
 - [REST API 보안](https://bcho.tistory.com/955)
-- [IP Address & Subnet Mask & 기본게이트웨이](https://medium.com/pocs/tcp-ip-%EC%9D%B4%EB%A1%A0-ip-%EC%A3%BC%EC%86%8C-%EC%84%9C%EB%B8%8C%EB%84%B7-%EB%A7%88%EC%8A%A4%ED%81%AC-%EA%B7%B8%EB%A6%AC%EA%B3%A0-%EA%B8%B0%EB%B3%B8-%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4-ccd6d832711e)
+- [IP Address & Subnet Mask & 기본게이트웨이](https://medium.com/pocs/tcp-ip-%EC%9D%B5%EB%A1%A0-ip-%EC%A3%BC%EC%86%8C-%EC%84%9C%EB%B8%8C%EB%84%B7-%EB%A7%88%EC%8A%A4%ED%81%AC-%EA%B7%B8%EB%A6%AC%EA%B3%A0-%EA%B8%B0%EB%B3%B8-%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4-ccd6d832711e)
+- [Monad 개념 설명](https://teamdable.github.io/techblog/Moand-and-Functional-Architecture)
