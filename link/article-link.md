@@ -10,3 +10,5 @@
 - [REST API 보안](https://bcho.tistory.com/955)
 - [IP Address & Subnet Mask & 기본게이트웨이](https://medium.com/pocs/tcp-ip-%EC%9D%B5%EB%A1%A0-ip-%EC%A3%BC%EC%86%8C-%EC%84%9C%EB%B8%8C%EB%84%B7-%EB%A7%88%EC%8A%A4%ED%81%AC-%EA%B7%B8%EB%A6%AC%EA%B3%A0-%EA%B8%B0%EB%B3%B8-%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4-ccd6d832711e)
 - [Monad 개념 설명](https://teamdable.github.io/techblog/Moand-and-Functional-Architecture)
+- [Docker 이미지 원](https://www.44bits.io/ko/post/how-docker-image-work)
+- [Docker 컨테이너는 프로세스이다](https://www.44bits.io/ko/post/is-docker-container-a-virtual-machine-or-a-process?utm_source=gaerae.com&utm_campaign=%EA%B0%9C%EB%B0%9C%EC%9E%90%EC%8A%A4%EB%9F%BD%EB%8B%A4&utm_medium=social)
