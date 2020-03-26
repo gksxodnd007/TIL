@@ -61,6 +61,46 @@ class ActorSupervisor extends Actor {
 }
 ```
 
+#### Supervisor를 통해 Error Handling할 경우 주의 할 점
+- Future와 Actor를 함께 사용하게 되면 Supervisor가 Exception을 잡지 못한다.
+```scala
+class WorkActor extends Actor {
+
+  def receive: Receive = {
+    case x: String =>
+      Future { ... }.onComplete {
+        case Success(_) => println(x)
+        case Failure(_) => throw new UserDefinedException()
+      }
+  }
+}
+```
+- 위의 예제와 같이 onComplete 콜백 메서드에서 exception을 throw한다면 actor외의 영역에서 Exception을 throw하는 것이기 때문에 Supervisor가 Exception을 잡지 못한다. 따라서 다음과 같이 해주어야한다.
+```scala
+import akka.pattern.pipe
+import akka.actor.Status.Failure //Try의 Failure가 아님에 주의하자.
+import akka.actor.Actor
+
+class WorkActor extends Actor {
+
+  def receive: Receive = {
+    case x: String =>
+      Future { ... }
+        .map(println)
+        .pipeTo(self)
+    case Failure(_) => throw new UserDefinedException()
+  }
+}
+
+// pipeTo 코드를 보면 다음과 같다.
+def pipeTo(recipient: ActorRef)(implicit sender: ActorRef = Actor.noSender): Future[T] = {
+  future.andThen {
+    case Success(r) => recipient ! r
+    case Failure(f) => recipient ! Status.Failure(f) // Future 실패시 sender에 akka.status.Status.Failure를 보낸다.
+  }
+}
+```
+
 #### Stream Error Handling
 
 - 기본적으로 예외가 발생하면 스트림 처리가 중단된다.
