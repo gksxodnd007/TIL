@@ -78,3 +78,43 @@ public class Account {
   - N + 1 문제해결
     - fetch join을 이용
     - projections를 통해 dto로 데이터를 가져올 경우 fetch join 하게 됨.
+
+### persist() vs merge()
+
+```java
+@Data
+class User {
+
+    @Id
+    private Long id;
+    @Column(name = "name")
+    private String name;
+    @Column(name = "age")
+    private long age;
+}
+
+
+class UserService {
+
+    @PersistenceContext
+    private EntityManager em;
+
+    @Transactional
+    public User persist() {
+        User user = new User(1L, "hubert", 27);
+        em.persist();
+        return user;
+    }
+
+    @Transactional
+    public User merge() {
+        User user = new User(1L, "hubert", 27);
+        em.merge(user);
+        return user;
+    }
+}
+```
+
+- persist() 호출 시 insert 쿼리가 날아감
+- merge() 호출 시 select 쿼리 후 해당 엔티티가 테이블에 없을 경우 insert 쿼리가 날아감. 해당 엔티티가 테이블에 존재할 경우 update가 날아감 (변경점이 있을 경우)
+    - 단, @Id 필드에 @GeneratedValue(strategy = GenerationType.IDENTITY)가 존재하고 id를 null로 비워 둔 상태로 User객체를 생성하여 merge(...)를 호출 할 경우 insert쿼리가 날아감 (persist(...)를 호출시 exception 발생)
