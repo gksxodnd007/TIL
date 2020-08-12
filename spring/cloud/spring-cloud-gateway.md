@@ -35,6 +35,48 @@ Spring Cloud Gateway는 Webflux를 기반으로 동작하기 때문에 먼저 We
 | `ViewResolutionResultHandler` | `CharSequence`, `View`, `Model`, `Map`, `Rendering`, or any other `Object` is treated as a model attribute. | `Interger.MAX_VALUE` |
 
 ### Spring Cloud Gateway
+<div id="init">
+	<h4>Init Application</h4>
+</div>
+
+1. SpringApplication.run(Application.class, args)
+2. SpringApplication#refreshContext(context)
+3. SpringApplication#refresh(context)
+4. AbstractApplicationContext#refresh()
+5. AbstractApplicationContext#finishRefresh()
+6. AbstractApplicationContext#publishEvernt(new ContextRefreshedEvent(this))
+7. RouteRefreshListner#onApplicationEvent(event) -> ContextRefreshedEvent를 받아 reset 호출
+8. RefreshRoutesEvent 이벤트 발행
+9. CachingRouteLocator에서 RefreshRoutesEvent를 구독
+10. CachingRouteLocator#fetch() 호출
+11. cache route 데이터 refresh
+
+#### Actuator Refresh Endpoint
+- build.gardle
+```groovy
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+}
+```
+- application.yml
+```yaml
+management:
+  endpoint:
+    gateway:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: gateway
+```
+- actuator 의존성 추가 후 위와 같이 property를 설정하면 spring cloud gateway에서 라우트 정보를 조회하고 갱신할 수 있는 endpoint를 열어준다.
+
+> To clear the routes cache, make a POST request to /actuator/gateway/refresh. The request returns a 200 without a response body.
+
+- GatewayControllerEndpoint는 AbstractGatewayControllerEndpoint를 상속받는다.
+- AbstractGatewayControllerEndpoint의 refresh 메서드를 보면 RefreshRoutesEvent를 발행하고 Mono.empty를 return한다. [Init Application](#init)의 8번 부터 다시 실행된다.
+
+#### Request Handling
 
 - Spring Cloud Gateway는 AbstractHandlerMapping을 구현하는 `RoutePredicateHandlerMapping`를 통해 요청을 라우팅한다.
 - Spring Cloud Gateway에서 http 요청을 처리하는 핵심 flow 정리하면 다음과 같다.
@@ -47,7 +89,7 @@ Spring Cloud Gateway는 Webflux를 기반으로 동작하기 때문에 먼저 We
 
 ### RouteLocator
 
-- Spring Cloud Gateway에서 http 요청을 처리하는 flow에서 **4번 과정**의 핵심이다.
+- Spring Cloud Gateway에서 http 요청을 처리하는 flow에서 **4번 과정**이 핵심이다.
 - 아무런 커스텀 구현이 없는 상황에서 Spring Cloud Gateway는 `CachingRouteLocator`를 통해 Route정보들을 가져오며 Spring Context가 Boot될 때 기본으로 등록된 모든 `RouteLocator들의 getRoutes`를 `CachingRouteLocator`에서 호출하여 route정보를 로컬에 캐싱하게된다. 해당 정보는 CachingRouteLocator의 refresh 메서드를 통해 바뀔수 있으며 Spring에서 제공하는 ApplicationEvent를 통해 해당 메서드가 호출되게 만들 수 있다.
 
 ```java
