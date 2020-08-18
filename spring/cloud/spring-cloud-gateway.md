@@ -85,6 +85,7 @@ management:
 2. `DefaultWebFilterChain.filter(...)`에서 `WebHandler.handler` 호출
 3. `WebHandler`의 구현체인 `DispatcherHandler`에서 `HandlerMapping`의 `getHandler`들을 호출
 4. `RoutePredicateHandlerMapping`의 `lookupRoute`를 호출하여 Route정보를 discovering 하여 `ServerWebExchange`에 attribute로 해당 정보들을 저장 (각 Route의 Predicate들을 호출)
+> RequestMappingHandlerMapping의 order가 RoutePredicateHandlerMapping보다 높기 때문에 @RequestMapping이 붙은 메서드가 우선적으로 search되어 사용된다.
 5. `NettyRoutingFilter`에서 `ServerWebExchange`에 저장된 Route정보들을 꺼내 forwarding하며 forwarding 전후로 등록된 `GatewayFilter`들을 적용함
 
 ### RouteLocator
