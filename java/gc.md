@@ -29,7 +29,7 @@ Parallel Old GC & Parallel GC 참고 글
   - 재표시(remark) 단계 (STW): 컨커런트 표시 단계에서 표시하는 동안 변경된 객체에 대해서 다시 표시하는 단계
   - 컨커런트 스윕 단계: 표시되어 있는 쓰레기를 정리하는 단계
 - CMS는 Compaction단계를 거치지 않기 때문에 왼쪽으로 메모리를 몰아 놓는 작업을 수행하지 않는다. 따라서 Old 영역에 객체보다 큰 여유 공간이 있을지라도 fragment로 인해 객체가 Old 영역으로 승격되지 못하는 경우가 발생한다. 이럴 경우에는 ParallelOldGC가 수행되어 Compaction이 이루어진다.
-  - 위와 같은 상황을 Concurrent Failure Mode(이하 CMF)라고 한다. CMS GC는 대부분 어플리케이션 스레드와 동시에 작동한다. 실행 객체의 할당압이 높거나 객체의 크기가 커서 조기승격이 자주 발생 할 때 CMF가 발생할 확률이 높아진다. 이를 해결하기 위해서는 `-XX:CMSInitiatingOccupancyFraction=<N>` 옵션을 주어 CMS가 언제 수집을 시작할지 설정할 수 있다. 기본적으로 최초의 CMS Full GC는 heap이 75% 찼을 때 시작된다. CMS가 제때 수행되어 Old 영역을 정리해 준다면 CMF발생 빈도를 낮출 수 있다.
+  - 위와 같은 상황을 Concurrent Failure Mode(이하 CMF)라고 한다. CMS GC는 대부분 어플리케이션 스레드와 동시에 작동한다. 실행 객체의 할당압이 높거나 객체의 크기가 커서 조기승격이 자주 발생 할 때 CMF가 발생할 확률이 높아진다. 이를 해결하기 위해서는 `-XX:CMSInitiatingOccupancyFraction=<N>` 옵션을 주어 CMS가 언제 수집을 시작할지 설정할 수 있다. 기본적으로 최초의 CMS Full GC는 heap이 75% 찼을 때 시작된다. CMS GC가 제때 수행되어 Old 영역을 정리해 준다면 CMF발생 빈도를 낮출 수 있다.
 
 CMS GC 참고 글
 - http://insightfullogic.com/2013/May/07/garbage-collection-java-3/
