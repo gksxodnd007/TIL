@@ -1,4 +1,4 @@
-### JVM Garbage Collector
+## JVM Garbage Collector
 
 ### Serial GC VS Parallel GC
 - Young GC를 Serial GC는 Single CPU를 이용하여(싱글스레드) 처리한다. 반면에 Parallel GC는 (Multi CPU환경에서) 병렬로 처리한다.
@@ -11,7 +11,7 @@
 - Parallel Old GC는 Sweep phase 대신에 Summary라는 phase가 이를 대신하는데, Summary phase에서는 object를 훑는 것이 아니라 region을 훑는다. (Compaction단계에서 살아있는 객체들을 시작 영역으로 모아두기 때문)
 > -XX:+UseParallelOldGC
 
-Parallel Old GC & Parallel GC 참고 글:
+Parallel Old GC & Parallel GC 참고 글
 - https://sarc.io/index.php/java/478-gc-useparallelgc-useparalleloldgc
 
 ### Concurrent Mark Sweep GC
