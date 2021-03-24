@@ -2,7 +2,7 @@
 
 - Bootstrap Class Loader가 , Object 클래스들을 비롯하여 자바 API들을 로드한다.
 - Bootstrap Class Loader는 JVM을 기동할 때 생성되며, 다른 클래스 로더와 달리 자바가 아니라 네이티브 코드로 구현되어 있다.
-> java -Dspring.profiles.active=production -server -XX:+UseParallelGC -Xms512m -Xmx512m -XX:NewSize=256m -XX:MaxNewSize=256m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/analysis -jar  ./kk-0.0.1-SNAPSHOT.jar &
+> java -Dspring.profiles.active=production -server -XX:+UseParallelGC -Xms512m -Xmx512m -XX:NewSize=256m -XX:MaxNewSize=256m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/analysis -jar ./kk-0.0.1-SNAPSHOT.jar &
 
 - Xmx512m : heap memory를 최대 512mb까지 이용(default: os memory / 4)
 - Xms512m : heap memory init 512mb
