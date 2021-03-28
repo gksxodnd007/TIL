@@ -19,7 +19,7 @@
 
 ## Micro Service Architecture (MSA)
 
-- 서비스 지향 아키텍쳐(SOA)에서 진화한 아키텍쳐로 애자일 개발 방식 ()
+- 서비스 지향 아키텍쳐(SOA)에서 진화한 아키텍쳐로 애자일 개발 방식
 - 급변하는 기술 트랜드 등 최근 IT시장의 요구사항 및 환경에 대응하기 위해 나온 방법
 
 장점
@@ -37,6 +37,7 @@
 # Anatomy MicroService Architecture (MSA)
 
 ## MSA Component
+<img src="https://user-images.githubusercontent.com/27043428/112759656-fba93d80-902e-11eb-8109-7eab92932195.png" width=500 />
 
 ### Outer Architecture
 
@@ -75,7 +76,7 @@ MSA는 분리된 서비스들간의 협업을 통해 기능을 제공한다. 이
 ### 트랜잭션
 
 - strong consistency: 모든 시간에 데이터가 동기화되어 있어야한다.
-  - **2PC(2 phase commit) pattern**: prepare phase and commit phase, commit 준비가 완료되면 동시에 모든 db에 commit이 적용된다. 이기종 database가 활용될 때 사용되며 MSA에서는 실용적이지 않을 떄가 있다.
+  - **2PC(2 phase commit) pattern**: prepare phase and commit phase, commit 준비가 완료되면 동시에 모든 db에 commit이 적용된다. 이기종 database가 활용될 때 사용되며 성능이 감소할 수 있다.
 - eventual consistency: 특정 시간동안은 데이터가 불일치 할 수 있지만, 특정 시간이 지나면 데이터가 동기화되어있다.
   - **SAGA pattern**: 각 트랜잭션이 단일 서비스 내의 데이터를 갱신하는 일련의 로컬 트랜잭션 방식. 첫번째 트랜잭션이 완료되고 난 후 두번째 트랜잭션은 이전의 작업 완료에 의해 트리거 되는 방식이다.
     - Choreography(Event) : 각 로컬트랜잭션이 이벤트를 발생시고 다른 서비스가 트리거링 하는 방식.
@@ -94,6 +95,25 @@ MSA는 분리된 서비스들간의 협업을 통해 기능을 제공한다. 이
 
 ## MSA Best Practice
 
-- 하나의 datasource는 하나의 서비스만 통신되도록한다. 다른 도메인의 데이터가 필요할 경우 REST 통신, RPC 통신등의 네트워크 호출을 통해 가져온다.
+- 하나의 repository는 하나의 서비스에서만 사용한다. 다른 도메인의 데이터가 필요할 경우 REST 통신, RPC 통신등의 네트워크 호출을 통해 가져온다.
 - REST 통신을 기본으로 하되 공유 라이브러리 방식은 지양해야한다. 공유라이브러리 방식을 채택하게되면 공유 라이브러리를 사용하는 클라이언트측 코드는 빈번하게 재컴파일/재빌드 후 재배포가 이루어져야한다.
 - 도메인 경계가 불분명한 개발 단계에서는 Monolithic으로 시작하는 것이 더 좋은 선택이 될 수 있다. 시스템이 발전하면서 도메인 경계가 분명 해질 때 MSA로 전환하는 것이 좋다. MSA로의 전환은 package 분리부터 시작되어야한다. 도메인 별로 package를 분리하고 다른 도메인과의 통신이 필요할 경우 service class를 직접 의존하여 통신하기 보다는 adaptor (connector) layer를 두어 메서드를 호출하는 것이 좋다. 추후 도메인이 완전하게 분리되어 네트워크 통신이 필요할 경우 해당 adaptor만 메서드 호출 방식에서 REST 통신으로 변경하면 된다. 인터페이스만 잘 설계한다면 메서드 호출 방식이든 네트워크를 통한 호출이든 변경점은 크게 발생하지 않는다.
+
+## Monolithic TO MSA
+
+- API Gateway를 활용하여 legacy 고립 시키기
+  - ref: https://woowabros.github.io/r&d/2017/06/13/apigateway.html
+- Strangler Pattern -> 점진적 분리 -> legacy 고립 (strangler: 목을 조이다)
+  - https://microservices.io/refactoring
+  - https://microservices.io/patterns/refactoring/strangler-application.html
+- 서비스 분리
+  - 여러가지 방법들이 많지만 대부분 DDD를 통하여 `도메인 별로 서비스를 나누는 것`을 추천함 (bounded context, aggregate)
+  - 도메인을 나누는데 의견충돌이 발생한다면 A기능의 장애로 인해 B기능까지 마비가 되는 것이 적합한 상황인가?를 고민해보자. `A기능의 장애가 B기능의 장애까지 전파될 필요가 없다면 A와 B를 분리`
+
+참고
+- [마이크로 서비스 아키텍쳐 사례 분석 글](https://yobi.navercorp.com/plasma/posts/12)
+- [Building Microservices](http://www.yes24.com/Product/Goods/36551677)
+- [스프링 5.0 마이크로서비스 2/e](http://www.yes24.com/Product/Goods/58255540)
+
+MSA에 대한 Gartner 인터뷰
+- https://www.comworld.co.kr/news/articleView.html?idxno=49710
