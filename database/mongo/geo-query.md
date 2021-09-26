@@ -128,3 +128,25 @@ db.restaurants.find(
   }
 )
 ```
+
+### 가까운 곳을 찾고 거리까지 함께 구하는 방법
+- $geoNear 연산은 aggregation 연산에 포함이 가능하므로 MongoDB의 aggregation 파이프라인 장점 최대한 이용할 수 있다.
+```json
+{ $geoNear: { <geoNear options> } }
+```
+- distanceField & distanceMultiplier option을 이용하면 document에 거리 값을 포함하여 반환한다.
+```
+> db.locations.aggregate([{
+...   $geoNear: {
+...     near: {
+...       type: 'Point',
+...       coordinates: [-122.5, 37.1]
+...     },
+...     spherical: true,
+...     maxDistance: 900 * 1609.34,
+...     distanceMultiplier: 1 / 1609.34,
+...     distanceField: 'distance'
+...   }
+... }])
+```
+위의 쿼리는 특정 지점으로부터 900마일 이내에 존재하는 모든 document를 가까운 거리순으로 정렬하여 반환한다. `distanceMultiplier`를 통해 거리 단위가 계산된 거리 값이 `distance`필드에 저장한다. 이 필드를 반환될 document에 포함한다.
