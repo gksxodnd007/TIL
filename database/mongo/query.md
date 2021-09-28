@@ -20,6 +20,22 @@ db.collection.find({"field": {"$gte": 3, "$lte": 7}})
 db.collection.find({"array_field": {"$size": 3}})
 ```
 
+#### Insert
+
+- 하나의 document 입력
+```
+db.collection.insertOne({"title": "Real MySQL 8.0"})
+```
+
+- 여러 document 입력
+```
+db.collection.insertMany(
+    {"title": "Real MySQL 8.0"},
+    {"title": "Effective Java 3/E"},
+    ...
+)
+```
+
 #### Update
 
 - `$set`연산자를 이용하여 필드 갱신. 필드가 존재하지 않으면 새 필드가 생성
