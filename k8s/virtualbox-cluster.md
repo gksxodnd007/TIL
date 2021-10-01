@@ -66,6 +66,10 @@ sudo apt-mark hold kubelet kubeadm kubectl
 
 8. 각각의 vm들을 실행한 후 터미널에 ifconfig or ip addr을 입력하면 ip가 설정되어있다. vm에서 해당 ip로 ping을 날려 정상적으로 수행되는지 확인한다.
 
+9. virtualbox를 이용한 k8s 클러스터의 구성은 다음과 같다고 볼 수 있다.
+
+![](./assets/cluster-info.png)
+
 #### kubernetes 노드 추가
 1. 각 vm에서 다음과 같이 터미널로 swap 기능을 꺼준다.
 ```
