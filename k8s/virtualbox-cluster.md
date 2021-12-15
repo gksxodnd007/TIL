@@ -128,6 +128,7 @@ sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
   systemctl restart kubelet
   ```
 참고: https://stackoverflow.com/questions/52119985/kubeadm-init-shows-kubelet-isnt-running-or-healthy
+
 3. `kubectl get node`를 입력시 master 노드가 NotReady 상태로 보여지는것을 확인 할 수 있다.
   - kubectl은 .kube/config 파일을 보고 실행된다. 이 파일이 없다면 `The connection to the server localhost:8080 was refused - did you specify the right host or port?`에러가 발생 할 수 있다. 해당 에러가 발생한다면 다음과 같은 조치를 취해준다.
   ```
