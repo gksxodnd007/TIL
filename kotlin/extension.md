@@ -40,3 +40,5 @@ class Sut(val a: Int = 10, val b: Int = 20) {
 
 class Dut(private val a: Int = 30)
 ```
+
+> private 접근제어자는 클래스 안에서 사용된다면 해당 클래스 안에서만 호출이 가능하고 top level에서 사용되면 해당 파일에서만 호출이 가능
