@@ -1,172 +1,295 @@
-# Generational ZGC의 짧은 Pause와 G1 Young GC의 차이
+# G1GC와 (Generational) ZGC
 
-**대상:** JDK 21 HotSpot (Generational ZGC: JEP 439)  
-**목적:** Generational ZGC가 pause time을 매우 짧게 유지하는 핵심 메커니즘과 G1 GC의 Young GC 모델을 비교한다.
+이 문서는 HotSpot JVM의 G1GC와 ZGC를 객체 이동, 참조 처리, 세대 관리, latency 관점에서 비교한다. 여기서 말하는 latency는 단순히 GC 로그의 `Pause` 시간이 아니라 애플리케이션 요청의 end-to-end latency를 뜻한다.
 
----
+## 핵심 요약
 
-## Executive summary
+두 수집기 모두 살아 있는 객체만 다른 메모리 단위로 복사하고 기존 단위를 통째로 회수하는 **moving/compacting collector**다. 차이는 객체를 이동시키는 시점과, 이전 주소를 가리키는 참조를 처리하는 방법이다.
 
-Generational ZGC의 낮은 지연시간은 “marking을 concurrent로 한다”는 한 가지 이유로 설명되지 않는다. 결정적인 설계는 **객체 이동(relocation)과 stale reference 처리까지 애플리케이션 실행 중에 수행**하는 것이다. 참조를 읽는 경로의 **load barrier**가 이전 주소를 새 주소로 해석하고, 포인터에 담긴 GC 상태 정보인 **colored pointer**가 이 판정을 빠르게 가능하게 만든다.
+| 항목 | G1GC | ZGC / Generational ZGC |
+| --- | --- | --- |
+| 힙 관리 단위 | 동일 크기의 Region | 객체 크기에 따른 Page type |
+| 객체 이동 | Young/Mixed GC의 STW evacuation | concurrent relocation |
+| 이전 참조 처리 | STW 안에서 일괄 갱신 | colored pointer와 load barrier로 지연 보정 |
+| 세대 관리 | Eden, Survivor, Old Region | Generational ZGC에서는 Young/Old Page 및 Young Page age |
+| 주된 trade-off | 더 긴 STW pause 가능성 | barrier, concurrent GC CPU, heap headroom 비용 |
 
-G1도 concurrent marking을 수행하지만, Young GC와 Mixed GC의 객체 evacuation은 stop-the-world(STW) pause에서 수행한다. 따라서 live object 복사량, 외부 참조 탐색, remembered-set 처리량이 pause에 직접 반영된다.
+## 용어
 
-Generational ZGC는 ZGC의 concurrent relocation 모델을 유지한 채 young/old 세대를 분리했다. young object를 자주, 저렴하게 수집해 CPU와 메모리 여유 공간 요구량을 줄이지만, load/store barrier 및 concurrent worker를 위한 비용은 지불한다.
+- **Live object**: GC root에서 도달 가능하여 회수하면 안 되는 객체.
+- **Evacuation / relocation**: live object를 새 위치에 복사해 기존 Region/Page를 비우는 작업. G1에서는 보통 evacuation, ZGC에서는 relocation이라고 부른다. 본질적으로는 같은 종류의 객체 이동이다.
+- **Collection Set (CSet)**: G1이 이번 STW GC에서 evacuate할 Region 집합.
+- **Relocation Set**: ZGC가 relocation할 Page 집합.
+- **STW (Stop-The-World)**: Java 애플리케이션 스레드 전체를 safepoint에서 멈추는 구간.
+- **Allocation stall**: 빈 공간이 부족해 객체 할당을 시도한 Java 스레드가 GC의 공간 확보를 기다리는 상태. STW와는 다르지만, 많은 worker가 동시에 막히면 서비스 전체가 멈춘 것처럼 보일 수 있다.
 
----
+## 1. G1GC의 GC 과정
 
-## 1. 두 collector의 근본 모델
+G1은 Region 기반의 세대별 collector다. 대부분의 새 객체는 Eden Region에 할당되고, Young GC 또는 Mixed GC에서 CSet에 속한 Region의 객체를 **STW로 evacuate**한다.
 
-| 관점 | G1 GC | Generational ZGC |
-|---|---|---|
-| Heap 구성 | 동일 크기 Region, young/old 논리 세대 | young/old 논리 세대와 Region |
-| Marking | 상당 부분 concurrent | 상당 부분 concurrent |
-| 객체 이동 | Young/Mixed STW evacuation | concurrent relocation |
-| 참조 갱신 | pause 동안 eager update | load barrier 기반 lazy/self-healing update |
-| Young 수집의 주된 pause 비용 | root/remembered set scan, 복사, 참조 갱신 | 짧은 phase 전환 및 root 관련 작업 |
-| 지연시간 특성 | pause 목표를 예측·제어하지만 workload 변화에 영향 | live set/heap 크기와 pause의 결합이 훨씬 약함 |
-
-### G1: 정지 중에 객체를 옮기는 collector
-
-G1은 회수 효율이 좋은 Region을 Collection Set으로 선택하고, STW pause에서 해당 Region의 live object를 destination Region으로 복사한다. 참조도 이 pause에 처리한 뒤 source Region을 즉시 재사용한다. Region 선택으로 pause 목표에 맞추려 하지만, copy 및 scan 비용은 본질적으로 pause budget에 들어간다.
-
-### Generational ZGC: 실행 중에 객체를 옮기는 collector
-
-ZGC는 relocation 대상 객체를 복사하는 동안에도 application thread를 실행시킨다. 예전 주소를 가진 참조가 남아 있어도 해당 참조를 load할 때 새 주소로 해석할 수 있으므로, 전체 heap의 모든 참조를 한 번에 고치는 STW 작업이 필요하지 않다.
-
----
-
-## 2. 낮은 pause를 만드는 핵심 메커니즘
-
-### 2.1 Colored pointer: 참조 자체에 GC 상태를 표현
-
-ZGC는 객체 참조의 일부 비트를 GC metadata로 사용한다. 이 정보로 barrier는 현재 참조가 relocation 전 주소인지, 현재 GC phase에서 이미 확인된 참조인지 등을 빠르게 판별한다. application과 GC가 동시에 객체를 다루면서도 안전성을 지키는 기반이다.
-
-중요한 점은 Java 프로그램이나 JNI API가 colored pointer를 직접 보지 않는다는 것이다. HotSpot의 object access/barrier 경로가 이를 관리하며, runtime에 노출되는 일반 object pointer는 dereference 가능한 형태로 제공된다.
-
-### 2.2 Load barrier: stale pointer를 사용 시점에 보정
-
-객체 A가 `old-address`에서 `new-address`로 이동해도, 모든 A 참조를 즉시 찾을 필요가 없다. application thread가 A의 참조를 읽을 때 JIT가 삽입한 load barrier가 동작한다.
+### Young GC
 
 ```text
-reference load
-  ├─ 최신 주소/정상 metadata  → fast path로 그대로 사용
-  └─ relocation 전 주소      → forwarding 정보로 새 주소 해석
-                               └─ 가능한 경우 참조도 새 주소로 갱신 (self-healing)
+Eden Region + 현재 Survivor Region을 CSet으로 선택
+  ↓ STW
+GC root와 Remembered Set을 시작점으로 live object 식별
+  ↓
+live object를 새 Survivor 또는 Old Region으로 복사
+  ↓
+참조를 새 주소로 갱신
+  ↓
+기존 Eden/Survivor Region 전체를 free Region으로 반환
 ```
 
-따라서 “이동이 끝나기 전에 모든 포인터를 고쳐야 한다”는 moving GC의 전제가 사라진다. 이후 접근 과정에서 stale pointer가 점진적으로 해소된다.
+죽은 객체는 복사하지 않으므로, CSet Region을 통째로 재사용할 수 있다. 이 작업은 garbage collection이면서 동시에 compaction이다.
 
-### 2.3 Concurrent marking과 concurrent relocation
+### Concurrent Marking과 Mixed GC
 
-ZGC의 일반적인 흐름은 다음과 같다.
+G1은 Old Region의 live data를 파악하기 위해 concurrent marking을 수행한다. 이후 회수 가치가 높은 Old Region 일부를 Young Region과 함께 CSet에 넣어 **Mixed GC**로 evacuate한다.
 
 ```text
-짧은 STW phase 전환/root 처리
-        ↓
-concurrent marking: live object 판별
-        ↓
-relocation set 선택
-        ↓
-concurrent relocation: live object 복사
-        ↓
-load barrier를 통한 lazy remapping 및 source region 회수
+Concurrent Marking
+  ↓ Old Region별 live bytes 계산
+Mixed GC (STW)
+  ↓ Young Region + 선택된 Old Region evacuation
 ```
 
-핵심은 live object graph traversal와 object copy가 애플리케이션을 멈춘 pause의 주 작업이 아니라는 점이다. 이 때문에 ZGC의 pause는 보통 sub-millisecond에서 수 ms 수준이며, 수집해야 할 live data가 커졌다고 그만큼 pause가 선형으로 늘어나는 구조가 아니다.
-
-### 2.4 Generational ZGC가 추가한 store barrier
-
-Generational ZGC는 young과 old를 독립적으로 수집해야 하므로 inter-generational reference를 추적한다. 이를 위해 store barrier를 추가했다.
-
-- load barrier: stale pointer의 주소 보정과 metadata 제거에 집중한다.
-- store barrier: 새 reference를 colored 형태로 저장하고, marking 및 old-to-young remembered set을 유지한다.
-- marking 부담 일부를 store barrier로 옮겨, 더 빈번히 실행되는 load barrier의 fast path를 단순화한다.
-
-이것은 pause 시간만을 위한 변화가 아니라, generational 모델에서도 높은 throughput을 유지하기 위한 설계다.
-
----
-
-## 3. G1 Young GC와 Generational ZGC Young GC
-
-### 3.1 G1 Young GC: STW evacuation
+따라서 G1은 marking은 concurrent하게 할 수 있어도, 일반적인 Young/Mixed 객체 이동과 참조 갱신은 STW다. 실제 pause는 대략 다음 요소에 의해 결정된다.
 
 ```text
-[애플리케이션 정지]
-1. Thread root 및 old → young remembered set 스캔
-2. Eden/Survivor의 live object를 Survivor 또는 Old로 복사
-3. 복사된 객체를 향하는 참조를 갱신
-4. source young Region을 즉시 재사용
-[애플리케이션 재개]
+G1 pause ≈ root/Remembered Set 스캔
+         + CSet의 live object 복사
+         + 참조 갱신
+         + 기타 고정 비용
 ```
 
-G1에서 Young GC의 Collection Set은 Young Region으로 구성된다. 살아남은 객체는 age에 따라 Survivor 또는 Old Region으로 evacuation된다. G1은 per-region remembered set을 유지하며, 보통 512-byte card 단위의 근사 위치를 기록한다. GC pause에서 해당 card 범위를 스캔해 정확한 참조를 찾는다.
+`-XX:MaxGCPauseMillis`는 엄격한 상한이 아니라, Young 크기와 CSet 크기를 조절하는 pause-time 목표다.
 
-따라서 다음이 Young pause에 직접 영향을 준다.
+## 2. ZGC의 GC 과정
 
-- young generation 크기
-- 살아남은 객체의 양 및 promotion 양
-- object copy와 pointer update 비용
-- old-to-young reference 수와 card scan 비용
-- destination 공간 부족 또는 evacuation failure
-
-### 3.2 Generational ZGC Young GC: concurrent mark 후 concurrent relocation
+초기 ZGC(non-generational ZGC)는 heap 전체를 하나의 세대로 취급하는 concurrent compacting collector다. 긴 STW 작업을 피하기 위해 marking, relocation, remapping의 무거운 작업을 Java 스레드와 병행한다.
 
 ```text
-짧은 pause: phase 전환/root 관련 작업
-        ↓
-concurrent young marking
-        ↓
-concurrent relocation of selected young regions
-        ↓
-load barrier가 stale reference를 lazy update
+짧은 Pause Mark Start
+  ↓
+Concurrent Mark / Remap
+  ↓
+짧은 Pause Mark End
+  ↓
+Relocation Set 준비 및 선택 (concurrent)
+  ↓
+짧은 Pause Relocate Start
+  ↓
+Concurrent Relocation
 ```
 
-Young collection은 young generation의 live object graph를 중심으로 처리한다. Old에서 Young으로 향하는 reference는 remembered set을 root로 취급한다. relocation은 application과 동시에 수행되며, Old 영역에 남은 old-to-young stale reference 역시 load barrier가 나중에 보정한다.
+Pause는 완전히 0이 아니다. safepoint 전환, 일부 root 처리 등 매우 짧은 STW 단계가 존재한다. 다만 live object 대량 복사와 참조 갱신을 STW 밖으로 옮겼기 때문에 pause가 heap 크기나 live set 증가에 훨씬 덜 민감하다.
 
-Generational ZGC는 live object를 먼저 mark하여 생존 집합을 확정한 후 relocation한다. density가 높은 young Region은 굳이 비싼 relocation을 하지 않고 제자리에 age시키거나 old로 promotion할 수 있다. 반면 G1 Young Collection Set에 포함된 Young Region의 생존 객체는 pause 내 evacuation해야 한다.
+### Colored pointer와 load barrier
 
-### 3.3 Remembered set의 차이
+ZGC는 HotSpot 내부 객체 참조의 비트를 활용한 **colored pointer**로 참조의 GC 상태를 표현한다. 애플리케이션이 객체 참조를 읽을 때 JIT이 삽입한 **load barrier**가 이를 빠르게 검사한다.
+
+```text
+객체 참조 load
+  ↓
+현재 GC 상태에서 정상(good) 참조인가?
+  ├─ 예: fast path로 그대로 사용
+  └─ 아니오: slow path
+       ├─ relocation/forwarding 정보를 조회해 새 주소 획득
+       ├─ 현재 phase에 맞게 참조 상태를 remap
+       └─ 가능하면 참조 필드도 새 값으로 갱신(self-healing)
+```
+
+따라서 Page A의 객체가 Page B로 옮겨진 뒤에도, 일시적으로 A를 가리키는 stale reference를 허용할 수 있다. 나중에 그 참조를 사용하면 load barrier가 B를 반환한다. 접근되지 않은 live reference는 후속 concurrent mark/remap의 그래프 순회에서 정리된다. self-healing은 정확성의 유일한 기반이 아니라, 같은 stale reference가 반복해서 slow path를 타지 않게 하는 성능 최적화다.
+
+### ZGC의 relocation
+
+```text
+Relocation Set Page A
+  [live X] [garbage] [live Y]
+        ↓ concurrent relocation
+새 Page B
+  [live X] [live Y]
+
+Page A 전체 회수
+```
+
+G1 evacuation과 마찬가지로 garbage는 복사하지 않는다. 차이는 G1이 참조 갱신까지 끝낼 때 애플리케이션을 멈추는 반면, ZGC는 stale reference를 barrier로 안전하게 해석하며 concurrent relocation을 한다는 점이다.
+
+## 3. Generational ZGC의 GC 과정
+
+Generational ZGC는 ZGC의 concurrent relocation 모델을 유지하면서 heap을 Young과 Old로 분리한다. 단명 객체가 대부분이라는 generational hypothesis를 활용해, 빈번한 Young collection이 Old 전체를 매번 mark하지 않고도 Young garbage를 회수하게 한다.
+
+```text
+Young collection
+  Young Page를 대상으로 mark/relocate
+  → 단명 객체를 빠르게 회수
+
+Old collection
+  Old Page를 대상으로 mark/relocate
+  → Young collection보다 훨씬 낮은 빈도로 수행
+```
+
+Generational ZGC에서는 load barrier 외에 **store barrier**도 중요하다. Old 객체가 Young 객체를 참조하거나 concurrent marking 중 참조가 변경될 때, store barrier가 GC가 필요한 참조 관계를 놓치지 않도록 기록·처리한다.
+
+```java
+oldOrder.customer = youngCustomer; // store barrier가 필요한 GC 정보를 유지
+```
+
+이것은 Java 코드에 메서드 호출이 추가된다는 뜻이 아니다. interpreter/JIT이 해당 참조 read/write 지점에 필요한 barrier 기계어를 생성한다. 일반적인 경우에는 짧은 fast path이며, GC 상태상 처리가 필요할 때만 slow path를 수행한다.
+
+> 참고: Generational ZGC는 JDK 21에 도입되었고, JDK 23에서 기본 ZGC 모드가 되었다. non-generational ZGC 모드는 JDK 24에서 제거되었다.
+
+## 4. Non-generational ZGC가 높은 객체 할당율에서 G1보다 느려질 수 있는 이유
+
+ZGC의 "low latency"는 긴 **GC pause**가 작다는 뜻이지, 모든 workload에서 요청 latency와 throughput이 항상 G1보다 좋다는 뜻은 아니다.
+
+대부분의 서버 workload에서는 매우 많은 객체가 Eden에 할당된 뒤 곧 죽는다.
+
+```text
+높은 allocation rate
+  ↓
+대부분의 객체가 짧은 시간 안에 garbage가 됨
+```
+
+G1은 Young GC에서 Eden/Survivor 중심으로 이 단명 객체를 회수한다. 반면 non-generational ZGC는 Young/Old 구분이 없어서, 새 쓰레기를 회수하는 cycle에도 전체 heap 관점의 marking과 relocation을 수행해야 한다.
+
+| 비용 또는 현상 | Non-generational ZGC에서의 영향 |
+| --- | --- |
+| 반복적인 전체 live graph marking | 큰 Old live set이 있어도 매 GC cycle 비용에 포함 |
+| frequent concurrent relocation | CPU와 memory bandwidth 사용량 증가 |
+| load barrier/remap | 애플리케이션 실행 경로에 추가 비용 |
+| GC worker와 application worker 경쟁 | CPU가 포화되면 요청 처리 시간이 증가 |
+| heap headroom 부족 | `Allocation Stall`로 실제 요청이 대기 |
+
+가장 위험한 상태는 다음이다.
+
+```text
+allocation rate > concurrent GC의 reclaim rate
+  ↓
+free heap headroom 감소
+  ↓
+GC가 back-to-back으로 실행
+  ↓
+할당 스레드가 Allocation Stall
+  ↓
+p99/p999 요청 latency 상승
+```
+
+Allocation stall은 STW가 아니다. 할당을 시도한 스레드가 공간이 생길 때까지 대기하는 현상이다. 하지만 worker pool의 많은 스레드가 동시에 stall되면, 사용자 관점에서는 전역 pause와 유사한 장애로 보일 수 있다.
+
+Generational ZGC는 Young GC가 단명 객체를 집중적으로 회수해 Old 전체 cycle의 빈도를 낮춤으로써 이 문제를 크게 완화한다. 그래도 ZGC는 충분한 heap headroom과 concurrent GC가 따라갈 CPU 자원이 필요하다.
+
+## 5. Generational ZGC의 Young GC 과정
+
+Generational ZGC의 Young GC도 copying/compacting collection이다. "dead object만 Page에서 삭제하고 live object와 빈 hole을 남기는 sweep 방식"이 아니다.
+
+```text
+Young source Page
+  [live A] [garbage] [live B]
+        ↓ concurrent relocation
+destination Young Page 또는 Old Page
+  [live A] [live B]
+
+source Page 전체 회수
+```
+
+흐름을 age와 함께 보면 다음과 같다.
+
+```text
+Eden Page (age 0)
+  └─ 생존 → Survivor age 1 Page
+
+Survivor age 1 Page
+  └─ 생존 → Survivor age 2 Page
+
+Survivor age N Page
+  └─ 생존 → 다음 age의 Survivor Page 또는 Old Page로 promotion
+```
+
+G1과 비교하면 논리적 copying 흐름은 유사하다.
+
+```text
+G1: Eden + Survivor(from) → Survivor(to) / Old
+ZGC: Young source Page     → 다음-age Survivor Page / Old Page
+```
+
+그러나 ZGC에는 미리 고정된 두 개의 Survivor semi-space를 교대하는 전통적 `from/to` 공간 모델이 없다. 필요에 따라 destination Page를 할당하고, source Page의 live object를 옮긴 뒤 source Page를 반환한다. 따라서 결과적으로는 flip과 유사하지만, 물리적 공간 운영 단위는 Page와 relocation set이다.
+
+## 6. G1GC의 Region과 ZGC의 Page 차이
+
+| 구분 | G1 Region | ZGC Page |
+| --- | --- | --- |
+| 크기 | JVM 기동 시 정해지는 동일 크기(보통 1~32MB) | Small/Medium/Large 등 객체 크기에 맞는 Page type |
+| 주요 역할 | Eden/Survivor/Old 역할을 맡는 수집 단위 | allocation, relocation, OS 메모리 관리 단위 |
+| 수집 단위 | CSet에 넣어 STW evacuation | Relocation Set에 넣어 concurrent relocation |
+| cross-reference 처리 | Remembered Set/card table이 핵심 | colored pointer + load/store barrier가 핵심 |
+| 기존 단위 회수 | evacuation 후 Region 전체 반환 | relocation 후 Page 전체 반환 |
+| 세대 표현 | Region의 역할로 표현 | Generational ZGC에서는 Page의 Young/Old 소속과 age로 표현 |
+
+큰 힙에서 G1 pause가 항상 길어지는 것은 아니다. 핵심은 heap 전체 크기보다 한 번의 CSet에서 처리하는 live bytes, Remembered Set 스캔량, 참조 갱신량이다. 다만 큰 heap은 live set·Old Region·cross-region reference가 함께 증가하기 쉬워 tail pause 위험을 키운다.
+
+## 7. G1GC의 객체 age 관리과 Generational ZGC의 age 관리
+
+### G1: 객체 단위 age
+
+G1은 객체 header(mark word)의 age 정보를 사용한다. Young GC에서 살아남아 복사되는 객체의 age를 증가시키고, tenure threshold와 Survivor 공간 압력 등을 바탕으로 객체별 promotion 여부를 판단한다. 같은 Survivor Region에도 서로 다른 age의 객체가 함께 들어갈 수 있다.
+
+```text
+하나의 G1 Survivor Region
+  [object age 1] [object age 3] [object age 6]
+```
+
+### Generational ZGC: Page 단위 age
+
+Generational ZGC는 `ZPageAge`처럼 **Page의 age**를 관리한다. 일반적인 Young allocation/relocation 흐름에서는 같은 Page의 객체가 같은 Young 생존 이력을 공유하도록 배치된다.
+
+```text
+Survivor age 2 Page
+  [object A: page age 2]
+  [object B: page age 2]
+  [object C: page age 2]
+```
+
+그 Page를 Young relocation source로 처리하면 live object는 모두 다음 age 그룹의 destination Page로 이동한다. 남은 객체 양에 따라 destination은 하나가 아니라 여러 Page일 수 있지만, destination의 age는 동일한 다음 age다.
+
+```text
+Survivor age 2 source Page
+  [live A] [dead] [live B]
+       ↓
+Survivor age 3 destination Page(s)
+  [live A] [live B]
+```
+
+age가 충분히 높아졌거나 정책상 promotion이 유리하면, 해당 live object들은 Old Page로 옮겨진다. promotion threshold는 workload의 allocation rate, survivor 비율, collection 비용 등에 따라 적응적으로 결정될 수 있다.
 
 | 항목 | G1 | Generational ZGC |
-|---|---|---|
-| 추적 대상 | Collection Set 밖에서 Collection Set으로 들어오는 참조 | young collection 시 old-to-young 참조 |
-| 기록 단위 | 보통 card(기본 512 bytes) 기반의 근사 위치 | object field 주소마다 bitmap bit로 기록하는 정밀 위치 |
-| 기록 시점 | write barrier가 card dirty | store barrier가 field location 기록 |
-| 수집 중 처리 | STW pause에서 card 범위를 스캔 | double-buffered bitmap snapshot을 concurrent 처리 |
-| trade-off | barrier/metadata 비용을 낮추되 pause scan 비용 발생 | 정밀한 bitmap과 barrier 복잡도 대신 pause 작업을 축소 |
+| --- | --- | --- |
+| age 관리 단위 | 객체 | Page |
+| 하나의 Survivor 단위 안의 age | 서로 섞일 수 있음 | 일반적으로 동일 age로 묶음 |
+| Young 생존 시 | 객체별 age 증가 | Page age에 따라 다음 age Page로 relocation |
+| promotion | 객체별 판단 | Page age 기반 정책과 relocation을 통해 Old Page로 이동 |
 
-Generational ZGC는 remembered-set bitmap을 두 벌로 둔다. Young GC 시작 시 active bitmap과 GC가 읽을 bitmap을 atomically swap한다. application은 새 bitmap에 계속 기록하고 GC는 이전 snapshot을 concurrent로 읽고 비운다. 이 분리는 application thread와 GC thread가 같은 remembered-set 자료구조를 두고 기다리는 일을 줄인다.
+## 운영 관점의 선택 기준
 
----
+- 수십~수백 ms 수준의 pause를 수용할 수 있고, CPU 효율과 안정적인 일반 서버 throughput이 중요하면 G1은 여전히 좋은 기본 선택이다.
+- 큰 heap에서 p99/p999 latency에 매우 민감하고 충분한 CPU 및 heap 여유가 있다면 Generational ZGC가 유리할 수 있다.
+- collector 선택은 pause 평균값만 보지 말고, 요청 latency percentile, allocation rate, live set, CPU saturation, GC cycle 빈도, `Allocation Stall`을 함께 비교해야 한다.
 
-## 4. Allocation stall은 STW가 아니다
+## 확인할 로그와 지표
 
-ZGC에서 allocation stall은 새 객체를 할당하려는 thread가 즉시 할당 가능한 공간을 얻지 못할 때 발생한다. 그 thread는 concurrent GC가 공간을 회수할 때까지 대기한다.
-
-```text
-Thread A:  allocation 요청 ── stall ─────────── 재개
-Thread B:  계속 실행 가능 ─────────────────────
-GC worker:                 concurrent GC/relocation
+```bash
+-Xlog:gc*,safepoint
 ```
 
-이는 safepoint에서 모든 Java thread를 정지시키는 STW pause와 다르다. 그러나 힙 여유 공간이 완전히 소진되면 많은 request thread가 동시에 stall에 걸려 서비스 전체가 멈춘 것처럼 관측될 수 있다. GC log의 `Allocation Stall (thread-name) Nms`는 해당 할당 thread가 지연된 시간으로 해석해야 한다.
+- G1: `Evacuate Collection Set`, Remembered Set/heap-root 스캔, object copy, Mixed GC 빈도와 pause를 확인한다.
+- ZGC: Young/Old cycle 빈도, concurrent mark/relocate 지속 시간, free heap headroom, `Allocation Stall`, concurrent GC thread CPU를 확인한다.
+- 공통: GC 이벤트 시각과 애플리케이션 p99/p999 latency, CPU saturation, allocation rate를 같은 타임라인에서 비교한다.
 
-주요 원인은 작은 `-Xmx`, 높은 allocation burst, CPU 포화로 인한 GC worker 실행 부족, 또는 concurrent GC의 reclaim 속도를 넘는 allocation rate다. Generational ZGC는 young을 더 자주 수집해 이 위험을 낮추지만, heap headroom 및 CPU가 충분해야 한다는 조건은 남는다.
+## 참고 자료
 
----
-
-## 5. 운영상 결론
-
-Generational ZGC의 강점은 “GC가 공짜”라는 데 있지 않다. 큰 비용을 **STW pause에서 concurrent worker와 barrier 실행 비용으로 이동**시킨 데 있다.
-
-- 매우 낮은 tail latency가 최우선이고 CPU/heap headroom을 확보할 수 있으면 Generational ZGC가 유리하다.
-- 수십~수백 ms pause가 허용되고, CPU 효율 및 일반적인 서버 throughput이 우선이면 G1도 강력한 선택이다.
-- ZGC에서 pause가 짧다는 사실만 확인하지 말고, allocation stall, GC CPU, allocation rate, available heap을 같이 봐야 한다.
-- G1에서 Young pause가 길다면 young size, survivor/promotion, remembered-set scan, copy 시간을 확인해야 한다.
-
-## References
-
-1. OpenJDK, *JEP 439: Generational ZGC* — https://openjdk.org/jeps/439
-2. Oracle, *Garbage-First (G1) Garbage Collector*, Java SE 21 GC Tuning Guide — https://docs.oracle.com/en/java/javase/21/gctuning/garbage-first-g1-garbage-collector1.html
-3. OpenJDK ZGC developers mailing list, *Big hiccups with ZGC* (Allocation Stall explanation) — https://mail.openjdk.org/pipermail/zgc-dev/2018-November/000503.html
+- [OpenJDK ZGC 프로젝트](https://wiki.openjdk.org/spaces/zgc/pages/329646/ZGC)
+- [JEP 439: Generational ZGC](https://openjdk.org/jeps/439)
+- [JEP 474: ZGC Generational Mode by Default](https://openjdk.org/jeps/474)
+- [JEP 490: Remove the Non-Generational Mode of ZGC](https://openjdk.org/jeps/490)
+- [OpenJDK ZGC load barrier 및 relocation 발표 자료](https://cr.openjdk.org/~pliden/slides/ZGC-OracleDevLive-2020.pdf)
